@@ -27,18 +27,19 @@ class StudentSessionTracker:
             
             # Parse date and time
             date_str = parts[2]  # Mon
-            date_part = parts[3]  # 04/07/2025
+            date_part = parts[3]  # 04/07/2025 (MM/DD/YYYY format)
             time_part = parts[4]  # 10:52:58.69
             
-            # Create datetime object
+            # Create datetime object - MM/DD/YYYY format (04/07/2025 = April 7th, 2025)
             datetime_str = f"{date_part} {time_part}"
-            timestamp = datetime.strptime(datetime_str, "%d/%m/%Y %H:%M:%S.%f")
+            timestamp = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")
             
             return {
                 'computer_name': computer_name,
                 'student_id': student_id,
                 'timestamp': timestamp,
-                'date': timestamp.date().strftime("%Y-%m-%d")
+                'date': timestamp.date().strftime("%Y-%m-%d"),
+                'weekday': timestamp.strftime("%A")
             }
         except (ValueError, IndexError) as e:
             return None
@@ -51,7 +52,6 @@ class StudentSessionTracker:
                     parsed = self.parse_log_line(line)
                     if parsed:
                         self.login_data.append(parsed)
-            pass
         except FileNotFoundError:
             pass
         except Exception as e:
@@ -65,7 +65,6 @@ class StudentSessionTracker:
                     parsed = self.parse_log_line(line)
                     if parsed:
                         self.logout_data.append(parsed)
-            pass
         except FileNotFoundError:
             pass
         except Exception as e:
@@ -150,6 +149,7 @@ class StudentSessionTracker:
                 
                 self.sessions[student_id][date] = {
                     'date': date,
+                    'weekday': logins[0]['weekday'] if logins else (logouts[0]['weekday'] if logouts else None),
                     'total_sessions': len(sessions),
                     'completed_sessions': len([s for s in sessions if s['status'] == 'complete']),
                     'total_duration_minutes': total_minutes,
@@ -221,6 +221,9 @@ def main():
     
     # Generate JSON report
     tracker.generate_json_report(output_file)
+    
+    # Print summary
+    tracker.print_summary()
 
 if __name__ == "__main__":
     main()

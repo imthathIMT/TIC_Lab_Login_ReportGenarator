@@ -50,11 +50,11 @@ class StudentReportGenerator:
             return
         
         student_id = input("Enter Student ID: ").strip()
-        date_input = input("Enter Date (MM/dd/YYYY): ").strip()
+        date_input = input("Enter Date (dd/MM/YYYY): ").strip()
         
         formatted_date = self.format_date_input(date_input)
         if not formatted_date:
-            print("Invalid date format. Please use MM/dd/YYYY")
+            print("Invalid date format. Please use dd/MM/YYYY")
             return
         
         if student_id not in self.data['students']:
@@ -101,6 +101,94 @@ class StudentReportGenerator:
         headers = ["Session#", "Computer", "Login Time", "Logout Time", "Hours", "Minutes", "Status"]
         print(tabulate(sessions_data, headers=headers, tablefmt="grid"))
     
+
+
+
+    def view_student_overall_summary(self):
+        """View an overall summary and all session details for a specific student across all dates"""
+        if not self.data:
+            print("No data available.")
+            return
+
+        student_id = input("Enter Student ID: ").strip()
+
+        if student_id not in self.data['students']:
+            print(f"Student ID {student_id} not found.")
+            return
+
+        student_data = self.data['students'][student_id]
+        if not student_data['days']:
+            print(f"No usage data available for Student ID {student_id}.")
+            return
+
+        all_sessions = []
+
+        total_hours = 0.0
+        total_minutes = 0
+        total_sessions = 0
+        completed_sessions = 0
+        incomplete_sessions = 0
+
+        for date_str, day_data in student_data['days'].items():
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+            formatted_date = date_obj.strftime("%d/%m/%Y")
+
+            for session in day_data['sessions']:
+                duration_hours = session.get('duration_hours', 0.0)
+                duration_minutes = session.get('duration_minutes', 0)
+                status = session.get('status', 'Unknown')
+
+                all_sessions.append([
+                    formatted_date,
+                    session.get('session_number', 'N/A'),
+                    session.get('computer_name', 'N/A'),
+                    session.get('login_time') or 'N/A',
+                    session.get('logout_time') or 'N/A',
+                    f"{duration_hours:.2f}",
+                    duration_minutes,
+                    status
+                ])
+
+                total_sessions += 1
+                total_hours += duration_hours
+                total_minutes += duration_minutes
+
+                if status.lower() in ['completed', 'complete', 'finished', 'done']:
+                    completed_sessions += 1
+                else:
+                    incomplete_sessions += 1
+
+        if not all_sessions:
+            print("No session records found for this student.")
+            return
+
+        # Adjust total_minutes into hours if needed
+        extra_hours, total_minutes = divmod(total_minutes, 60)
+        total_hours += extra_hours
+
+        print(f"\n{'='*80}")
+        print(f"STUDENT SUMMARY: {student_id}")
+        print(f"{'='*80}")
+
+        print(f"\n{'-'*80}")
+        print("SUMMARY")
+        print(f"{'-'*80}")
+        print(f"Total Sessions     : {total_sessions}")
+        print(f"Completed Sessions : {completed_sessions}")
+        print(f"Incomplete Sessions: {incomplete_sessions}")
+        print(f"Total Time Used    : {int(total_hours)} hours {int(total_minutes)} minutes")
+        print(f"{'-'*80}")
+
+        # Sort sessions by date, then session number
+        all_sessions.sort(key=lambda x: (datetime.strptime(x[0], "%d/%m/%Y"), x[1]))
+
+        headers = ["Date", "Session#", "Computer", "Login", "Logout", "Hours", "Minutes", "Status"]
+        print("\nSESSION DETAILS:")
+        print(tabulate(all_sessions, headers=headers, tablefmt="grid"))
+
+
+
+
     def view_monthly_usage(self):
         """View student monthly usage report"""
         if not self.data:
@@ -176,11 +264,11 @@ class StudentReportGenerator:
             return
         
         student_id = input("Enter Student ID: ").strip()
-        date_input = input("Enter any date in the week (MM/dd/YYYY): ").strip()
+        date_input = input("Enter any date in the week (dd/MM/YYYY): ").strip()
         
         formatted_date = self.format_date_input(date_input)
         if not formatted_date:
-            print("Invalid date format. Please use MM/dd/YYYY")
+            print("Invalid date format. Please use dd/MM/YYYY")
             return
         
         week_start, week_end = self.get_week_range(formatted_date)
@@ -292,10 +380,11 @@ class StudentReportGenerator:
         print("STUDENT LAB USAGE REPORT SYSTEM")
         print(f"{'='*50}")
         print("1. View Student Daily Usage")
-        print("2. View Student Monthly Usage")
-        print("3. View Student Weekly Usage")
-        print("4. Generate All Students Report")
-        print("5. Exit")
+        print("2. View Student Overall Summary (All Dates)")
+        print("3. View Student Monthly Usage")
+        print("4. View Student Weekly Usage")
+        print("5. Generate All Students Report")
+        print("6. Exit")
         print("-" * 50)
     
     def run(self):
@@ -305,21 +394,23 @@ class StudentReportGenerator:
         
         while True:
             self.show_menu()
-            choice = input("Enter your choice (1-5): ").strip()
+            choice = input("Enter your choice (1-6): ").strip()
             
             if choice == '1':
                 self.view_daily_usage()
             elif choice == '2':
-                self.view_monthly_usage()
+                self.view_student_overall_summary()
             elif choice == '3':
-                self.view_weekly_usage()
+                self.view_monthly_usage()
             elif choice == '4':
-                self.generate_all_students_report()
+                self.view_weekly_usage()
             elif choice == '5':
+                self.generate_all_students_report()
+            elif choice == '6':
                 print("Thank you for using Student Lab Usage Report System!")
                 break
             else:
-                print("Invalid choice. Please enter 1-5.")
+                print("Invalid choice. Please enter 1-6.")
             
             input("\nPress Enter to continue...")
 
@@ -335,13 +426,14 @@ def main():
     reporter = StudentReportGenerator()
     reporter.run()
 
-
 # This script is designed to generate reports based on student lab usage data.
 import subprocess
 
-subprocess.run(["python", "Generate_Json_Record.py"])
+try:
+    subprocess.run(["python", "Generate_Json_Record.py"])
+except FileNotFoundError:
+    print("Note: Generate_Json_Record.py not found. Make sure it exists in the same directory.")
 # Generate_Json_Record.py should be run before this script
-
 
 if __name__ == "__main__":
     main()
