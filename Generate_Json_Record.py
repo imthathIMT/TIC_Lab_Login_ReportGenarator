@@ -1,8 +1,6 @@
 import json
-import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict
-import os
 
 class StudentSessionTracker:
     def __init__(self):
@@ -16,21 +14,22 @@ class StudentSessionTracker:
         if not line:
             return None
         
-        # Split the line into parts
         parts = line.split()
-        if len(parts) < 4:
+        if len(parts) < 5:
             return None
         
         try:
             computer_name = parts[0]
             student_id = parts[1]
             
-            # Parse date and time
-            date_str = parts[2]  # Mon
-            date_part = parts[3]  # 04/07/2025 (MM/DD/YYYY format)
-            time_part = parts[4]  # 10:52:58.69
+            # Check if student_id starts with UT or ut
+            if not student_id.lower().startswith('ut'):
+                return None
             
-            # Create datetime object - MM/DD/YYYY format (04/07/2025 = April 7th, 2025)
+            # parts[2] is day of week (Mon, Tue, etc)
+            date_part = parts[3]  # MM/DD/YYYY
+            time_part = parts[4]  # HH:MM:SS.xx
+            
             datetime_str = f"{date_part} {time_part}"
             timestamp = datetime.strptime(datetime_str, "%m/%d/%Y %H:%M:%S.%f")
             
@@ -41,11 +40,10 @@ class StudentSessionTracker:
                 'date': timestamp.date().strftime("%Y-%m-%d"),
                 'weekday': timestamp.strftime("%A")
             }
-        except (ValueError, IndexError) as e:
+        except (ValueError, IndexError):
             return None
     
     def load_login_file(self, filepath):
-        """Load and parse login data from text file"""
         try:
             with open(filepath, 'r', encoding='utf-8') as file:
                 for line in file:
@@ -54,11 +52,10 @@ class StudentSessionTracker:
                         self.login_data.append(parsed)
         except FileNotFoundError:
             pass
-        except Exception as e:
+        except Exception:
             pass
     
     def load_logout_file(self, filepath):
-        """Load and parse logout data from text file"""
         try:
             with open(filepath, 'r', encoding='utf-8') as file:
                 for line in file:
@@ -67,16 +64,39 @@ class StudentSessionTracker:
                         self.logout_data.append(parsed)
         except FileNotFoundError:
             pass
-        except Exception as e:
+        except Exception:
             pass
-    
+
+    def remove_near_duplicates(self, threshold_seconds=1):
+        def unique_entries_with_tolerance(data):
+            data.sort(key=lambda x: (x['student_id'], x['date'], x['timestamp']))
+            unique_list = []
+            prev_entry = None
+            
+            for entry in data:
+                if prev_entry is None:
+                    unique_list.append(entry)
+                    prev_entry = entry
+                else:
+                    same_student = entry['student_id'] == prev_entry['student_id']
+                    same_date = entry['date'] == prev_entry['date']
+                    time_diff = (entry['timestamp'] - prev_entry['timestamp']).total_seconds()
+                    
+                    if same_student and same_date and abs(time_diff) <= threshold_seconds:
+                        # Near duplicate, skip
+                        continue
+                    else:
+                        unique_list.append(entry)
+                        prev_entry = entry
+            return unique_list
+        
+        self.login_data = unique_entries_with_tolerance(self.login_data)
+        self.logout_data = unique_entries_with_tolerance(self.logout_data)
+
     def calculate_sessions(self):
-        """Calculate sessions by matching login and logout times"""
-        # Sort data by student_id, date, and timestamp
         self.login_data.sort(key=lambda x: (x['student_id'], x['date'], x['timestamp']))
         self.logout_data.sort(key=lambda x: (x['student_id'], x['date'], x['timestamp']))
         
-        # Group by student and date
         login_by_student_date = defaultdict(list)
         logout_by_student_date = defaultdict(list)
         
@@ -88,14 +108,12 @@ class StudentSessionTracker:
             key = (logout['student_id'], logout['date'])
             logout_by_student_date[key].append(logout)
         
-        # Match logins with logouts
         all_keys = set(login_by_student_date.keys()) | set(logout_by_student_date.keys())
         
         for student_id, date in all_keys:
             logins = login_by_student_date.get((student_id, date), [])
             logouts = logout_by_student_date.get((student_id, date), [])
             
-            # Create sessions
             sessions = []
             logout_index = 0
             
@@ -110,7 +128,6 @@ class StudentSessionTracker:
                     'status': 'incomplete'
                 }
                 
-                # Find matching logout (first logout after this login)
                 while logout_index < len(logouts) and logouts[logout_index]['timestamp'] <= login['timestamp']:
                     logout_index += 1
                 
@@ -118,7 +135,6 @@ class StudentSessionTracker:
                     logout = logouts[logout_index]
                     session['logout_time'] = logout['timestamp'].strftime("%H:%M:%S")
                     
-                    # Calculate duration
                     duration = logout['timestamp'] - login['timestamp']
                     session['duration_minutes'] = int(duration.total_seconds() / 60)
                     session['duration_hours'] = round(duration.total_seconds() / 3600, 2)
@@ -127,7 +143,6 @@ class StudentSessionTracker:
                 
                 sessions.append(session)
             
-            # Handle any remaining logouts (logouts without matching logins)
             while logout_index < len(logouts):
                 logout = logouts[logout_index]
                 session = {
@@ -143,7 +158,6 @@ class StudentSessionTracker:
                 logout_index += 1
             
             if sessions:
-                # Calculate total time for the day
                 total_minutes = sum(s['duration_minutes'] for s in sessions if s['status'] == 'complete')
                 total_hours = round(total_minutes / 60, 2)
                 
@@ -158,7 +172,6 @@ class StudentSessionTracker:
                 }
     
     def generate_json_report(self, output_filepath):
-        """Generate JSON report with all student session data"""
         report = {
             'generated_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             'summary': {
@@ -176,54 +189,45 @@ class StudentSessionTracker:
                 'days': {}
             }
             
-            # Calculate overall statistics
             total_hours = sum(day_data['total_duration_hours'] for day_data in dates.values())
             total_sessions = sum(day_data['total_sessions'] for day_data in dates.values())
             
             student_data['total_hours_all_days'] = round(total_hours, 2)
             student_data['total_sessions_all_days'] = total_sessions
             
-            # Add daily data
             for date, day_data in sorted(dates.items()):
                 student_data['days'][date] = day_data
             
             report['students'][student_id] = student_data
         
-        # Save to JSON file
         try:
             with open(output_filepath, 'w', encoding='utf-8') as file:
                 json.dump(report, file, indent=2, ensure_ascii=False)
-        except Exception as e:
+        except Exception:
             pass
     
     def print_summary(self):
-        """Print a summary of the processed data"""
         pass
 
 def main():
-    # Initialize tracker
     tracker = StudentSessionTracker()
-    
-    # File paths (modify these according to your file locations)
     login_file = "login.txt"
     logout_file = "logoff.txt"
     output_file = "student_sessions.json"
     
-    # Load data files
     tracker.load_login_file(login_file)
     tracker.load_logout_file(logout_file)
     
     if not tracker.login_data and not tracker.logout_data:
+        print("No data loaded.")
         return
     
-    # Process sessions
+    print("Data loaded.")
+    
+    tracker.remove_near_duplicates(threshold_seconds=1)
+    
     tracker.calculate_sessions()
-    
-    # Generate JSON report
     tracker.generate_json_report(output_file)
-    
-    # Print summary
-    tracker.print_summary()
 
 if __name__ == "__main__":
     main()

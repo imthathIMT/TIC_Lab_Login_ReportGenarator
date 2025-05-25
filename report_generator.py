@@ -1,4 +1,5 @@
 import json
+import pandas as pd
 import os
 from datetime import datetime, timedelta
 from tabulate import tabulate
@@ -185,6 +186,43 @@ class StudentReportGenerator:
         headers = ["Date", "Session#", "Computer", "Login", "Logout", "Hours", "Minutes", "Status"]
         print("\nSESSION DETAILS:")
         print(tabulate(all_sessions, headers=headers, tablefmt="grid"))
+        
+        
+        # Ask if user wants to download Excel
+        choice = input("\nDo you want to download this report as an Excel file? (y/n): ").strip().lower()
+        if choice == 'y':
+            # Convert data
+            df_sessions = pd.DataFrame(all_sessions)
+            summary_data = {
+                "Metric": ["Total Sessions", "Completed Sessions", "Incomplete Sessions", "Total Hours", "Total Minutes"],
+                "Value": [total_sessions, completed_sessions, incomplete_sessions, int(total_hours), int(total_minutes)]
+            }
+            df_summary = pd.DataFrame(summary_data)
+
+            # Ensure directory exists
+            output_dir = "../students_report"
+            os.makedirs(output_dir, exist_ok=True)
+
+            # Base filename with date
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            base_filename = f"{student_id}_summary_{date_str}"
+            extension = ".xlsx"
+            file_path = os.path.join(output_dir, base_filename + extension)
+
+            # Auto-increment filename if it already exists
+            counter = 1
+            while os.path.exists(file_path):
+                file_path = os.path.join(output_dir, f"{base_filename}_{counter}{extension}")
+                counter += 1
+
+            # Write to Excel
+            with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
+                df_summary.to_excel(writer, sheet_name="Summary", index=False)
+                df_sessions.to_excel(writer, sheet_name="Session Details", index=False)
+
+            print(f"\n✅ Excel report saved as: {file_path}")
+        else:
+            print("\nReturning to main menu...")
 
 
 
@@ -373,6 +411,39 @@ class StudentReportGenerator:
         if len(all_students_data) > 10:
             print(f"\nTOP 10 STUDENTS BY USAGE:")
             print(tabulate(all_students_data[:10], headers=headers, tablefmt="grid"))
+            
+         # Ask user if they want to download report
+        choice = input("\nDo you want to download this report as an Excel file? (y/n): ").strip().lower()
+        if choice == 'y':
+            # Prepare DataFrames
+            df_summary = pd.DataFrame(summary_data, columns=["Metric", "Value"])
+            df_students = pd.DataFrame(all_students_data, columns=headers)
+
+            # Ensure output directory exists
+            output_dir = "../students_report"
+            os.makedirs(output_dir, exist_ok=True)
+
+            # Base filename with date
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            base_filename = f"all_students_summary_{date_str}"
+            extension = ".xlsx"
+            file_path = os.path.join(output_dir, base_filename + extension)
+
+            # Auto-increment filename if it already exists
+            counter = 1
+            while os.path.exists(file_path):
+                file_path = os.path.join(output_dir, f"{base_filename}_{counter}{extension}")
+                counter += 1
+
+            # Write to Excel
+            with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
+                df_summary.to_excel(writer, sheet_name="Overall Summary", index=False)
+                df_students.to_excel(writer, sheet_name="Student Usage Summary", index=False)
+
+            print(f"\n✅ Excel report saved as: {file_path}")
+        else:
+            print("\nReturning to main menu...")
+    
     
     def show_menu(self):
         """Display main menu"""
